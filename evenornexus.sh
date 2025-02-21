@@ -1,63 +1,73 @@
 #!/bin/bash
 
-set -e  # Stop execution on errors if any command fails
+set -e  # Прерывать выполнение при ошибке
 
-echo "Updating and installing necessary packages..."
+echo "Обновление и установка необходимых пакетов..."
 sudo apt update && sudo apt upgrade -y
 sudo apt install -y unzip screen tmux nano build-essential pkg-config libssl-dev git-all
 
-# Install Rust
+# Удаление старых версий Rust и установка новой
 if ! command -v cargo &> /dev/null; then
-    echo "Installing Rust..."
+    echo "Установка Rust..."
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
     export PATH="$HOME/.cargo/bin:$PATH"
 fi
 
-# Verify Rust installation
+# Проверка установки Rust
 cargo --version
 rustup target add riscv32i-unknown-none-elf
 
-# Remove old protoc version
-echo "Removing any existing protoc installation..."
-sudo apt remove -y protobuf-compiler
+# Удаление старых версий protoc
+echo "Удаление старых версий protoc..."
+rm -f /root/.local/bin/protoc
+rm -rf /root/.local/include/google/protobuf
+rm -f /usr/local/bin/protoc
+rm -rf /usr/local/include/google/protobuf
 
-# Install protoc 25.2
+# Установка protoc 25.2
 PROTOC_VERSION=25.2
 ARCH=linux-x86_64
 PROTOC_ZIP=protoc-$PROTOC_VERSION-$ARCH.zip
 
-echo "Downloading and installing protoc $PROTOC_VERSION..."
+echo "Скачивание и установка protoc $PROTOC_VERSION..."
 curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v$PROTOC_VERSION/$PROTOC_ZIP
 sudo unzip -o $PROTOC_ZIP -d /usr/local bin/protoc
 sudo unzip -o $PROTOC_ZIP -d /usr/local include/*
 rm -f $PROTOC_ZIP
 
-# Ensure /usr/local/bin is in PATH
+# Добавление /usr/local/bin в PATH
 if ! grep -q 'export PATH="/usr/local/bin:$PATH"' ~/.bashrc; then
     echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.bashrc
 fi
 export PATH="/usr/local/bin:$PATH"
 
-# Verify protoc installation
+# Проверка установки protoc
 protoc --version
 
-# Configure 8GB swap file
-if ! grep -q '/swapfile' /etc/fstab; then
-    echo "Setting up a new 8GB swap file..."
-    sudo swapoff -a || true
+# Настройка файла подкачки (swap)
+echo "Настройка swap файла..."
+
+# Отключение и удаление существующего swap файла, если он есть
+if grep -q '/swapfile' /etc/fstab; then
+    echo "Удаление существующего swap файла..."
+    sudo swapoff -a
     sudo rm -f /swapfile
-    sudo fallocate -l 8G /swapfile
-    sudo chmod 600 /swapfile
-    sudo mkswap /swapfile
-    sudo swapon /swapfile
-    echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-else
-    echo "Swap file already exists, skipping swap setup."
 fi
 
-# Verify swap
+# Создание нового swap файла
+sudo fallocate -l 8G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+
+# Добавление в fstab (если отсутствует)
+if ! grep -q '/swapfile' /etc/fstab; then
+    echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+fi
+
+# Проверка swap
 swapon --show
 free -h
 cat /proc/swaps
 
-echo "Installation completed successfully!"
+echo "Установка завершена успешно!"
