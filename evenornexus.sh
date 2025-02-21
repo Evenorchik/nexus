@@ -1,56 +1,63 @@
 #!/bin/bash
 
-set -e  # Stop execution on errors
+set -e  # Stop execution on errors if any command fails
 
-sudo apt install unzip
-
-sudo apt install screen
-
-sudo apt update && sudo apt upgrade -y && \
-sudo apt install -y tmux nano build-essential pkg-config libssl-dev git-all unzip && \
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
-source $HOME/.cargo/env && \
-cargo --version && \
-rustup target add riscv32i-unknown-none-elf && \
-sudo apt remove -y protobuf-compiler && \
-curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v25.2/protoc-25.2-linux-x86_64.zip && \
-unzip protoc-25.2-linux-x86_64.zip -d $HOME/.local && \
-export PATH="$HOME/.local/bin:$PATH" && \
-protoc --version
+echo "Updating and installing necessary packages..."
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y unzip screen tmux nano build-essential pkg-config libssl-dev git-all
 
 # Install Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+if ! command -v cargo &> /dev/null; then
+    echo "Installing Rust..."
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    export PATH="$HOME/.cargo/bin:$PATH"
+fi
 
-# Add target architecture for Rust
+# Verify Rust installation
+cargo --version
 rustup target add riscv32i-unknown-none-elf
 
-# Install protoc
-PROTOC_VERSION=21.12
+# Remove old protoc version
+echo "Removing any existing protoc installation..."
+sudo apt remove -y protobuf-compiler
+
+# Install protoc 25.2
+PROTOC_VERSION=25.2
 ARCH=linux-x86_64
 PROTOC_ZIP=protoc-$PROTOC_VERSION-$ARCH.zip
 
-# Download and extract
-curl -OL https://github.com/protocolbuffers/protobuf/releases/download/v$PROTOC_VERSION/$PROTOC_ZIP
+echo "Downloading and installing protoc $PROTOC_VERSION..."
+curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v$PROTOC_VERSION/$PROTOC_ZIP
 sudo unzip -o $PROTOC_ZIP -d /usr/local bin/protoc
 sudo unzip -o $PROTOC_ZIP -d /usr/local include/*
 rm -f $PROTOC_ZIP
 
-# Add /usr/local/bin to PATH
-if ! grep -q 'export PATH="$PATH:/usr/local/bin"' ~/.bashrc; then
-    echo 'export PATH="$PATH:/usr/local/bin"' >> ~/.bashrc
+# Ensure /usr/local/bin is in PATH
+if ! grep -q 'export PATH="/usr/local/bin:$PATH"' ~/.bashrc; then
+    echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.bashrc
 fi
-source ~/.bashrc
+export PATH="/usr/local/bin:$PATH"
 
-# Configure swap file
-sudo fallocate -l 8G /swapfile
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
-echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+# Verify protoc installation
+protoc --version
 
-# Check swap
+# Configure 8GB swap file
+if ! grep -q '/swapfile' /etc/fstab; then
+    echo "Setting up a new 8GB swap file..."
+    sudo swapoff -a || true
+    sudo rm -f /swapfile
+    sudo fallocate -l 8G /swapfile
+    sudo chmod 600 /swapfile
+    sudo mkswap /swapfile
+    sudo swapon /swapfile
+    echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+else
+    echo "Swap file already exists, skipping swap setup."
+fi
+
+# Verify swap
 swapon --show
 free -h
 cat /proc/swaps
 
-echo "Installation completed!"
+echo "Installation completed successfully!"
